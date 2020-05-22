@@ -22,6 +22,33 @@ class MyApp extends StatelessWidget {
   }
 }
 
+class ColorLed {
+  bool isOn;
+  int red;
+  int green;
+  int blue;
+  int alpha;
+  ColorLed({this.isOn,this.red,this.green,this.blue,this.alpha});
+  factory ColorLed.fromJson(Map<String,dynamic> parsedJson) {
+    return ColorLed(
+      isOn: parsedJson["isOn"],
+      red: parsedJson["red"],
+      green: parsedJson["green"],
+      blue: parsedJson["blue"],
+      alpha: parsedJson["alpha"],
+    );
+  }
+  Map<String,dynamic> toJson() {
+    return {
+      "isOn": this.isOn,
+      "red" : this.red,
+      "green" : this.green,
+      "blue" : this.blue,
+      "alpha" : this.alpha
+    };
+  }
+}
+
 
 class MyHomePage extends StatefulWidget {
   MyHomePage({Key key}) : super(key: key);
@@ -39,8 +66,9 @@ class _MyHomePageState extends State<MyHomePage> {
   String CHARACT_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
   String CHARACT_UUID_TX = "beb5483e-36e1-4688-b7f5-c5c9c331914b";
 
+  ColorLed _colorJson = new ColorLed(isOn: true, red: 0, green: 0, blue: 0, alpha: 0);
+  Color _currentColor = Colors.blue;
   bool lightTheme = true;
-  Color currentColor = Colors.limeAccent;
 
   BluetoothDevice _connectedDevice;
   BluetoothCharacteristic _characteristic;
@@ -49,7 +77,6 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void initState() {
     super.initState();
-   // if (_connectedDevice == null)
       _connectToEsp();
   }
 
@@ -76,13 +103,19 @@ class _MyHomePageState extends State<MyHomePage> {
         setState(() {
           _connectedDevice = device;
         });
-        device.discoverServices().then((value) {
+        device.discoverServices().then((value) async {
           for (BluetoothService service in value) {
             if (service.uuid.toString() == SERVICE_UUID) {
               for (BluetoothCharacteristic characteristic in service.characteristics) {
                 if (characteristic.uuid.toString() == CHARACT_UUID) {
-                  setState(() {
+                  characteristic.read().then((value) {
 
+                    Map<String,dynamic> color = json.decode(utf8.decode(value));
+                    setState(() {
+                      this._colorJson = new ColorLed.fromJson(color);
+                    });
+                  });
+                  setState(() {
                     _characteristic = characteristic;
                   });
                 }
@@ -90,6 +123,11 @@ class _MyHomePageState extends State<MyHomePage> {
                   setState(() {
                     _characteristicTX = characteristic;
                   });
+                  _characteristicTX.value.listen((value) {
+                    print("***** $value");
+                  });
+                  // TODO
+                  //await _characteristicTX.setNotifyValue(true);
                 }
               }
             }
@@ -142,11 +180,20 @@ class _MyHomePageState extends State<MyHomePage> {
                 children: <Widget>[
                   Column(
                     children: <Widget>[
-                      Text('R : ${currentColor.red}'), // int
-                      Text('G : ${currentColor.green}'),
-                      Text('B : ${currentColor.blue}'),
-                      Text('A : ${currentColor.alpha / 255 * 100} %'),
+                      Text('R : ${_colorJson.red}'), // int
+                      Text('G : ${_colorJson.green}'),
+                      Text('B : ${_colorJson.blue}'),
+                      Text('A : ${_colorJson.alpha / 255 * 100} %'),
                     ],
+                  ),
+                  Switch(
+                    value: _colorJson.isOn,
+                    onChanged: (value) {
+                      setState(() {
+                        _colorJson.isOn = value;
+                      });
+                      _sendColor();
+                    }
                   ),
                   RaisedButton(
                     elevation: 3.0,
@@ -159,7 +206,7 @@ class _MyHomePageState extends State<MyHomePage> {
                             contentPadding: const EdgeInsets.all(0.0),
                             content: SingleChildScrollView(
                               child: ColorPicker(
-                                pickerColor: currentColor,
+                                pickerColor: _currentColor,
                                 onColorChanged: changeColor,
                                 colorPickerWidth: 300.0,
                                 pickerAreaHeightPercent: 0.7,
@@ -178,8 +225,8 @@ class _MyHomePageState extends State<MyHomePage> {
                       );
                     },
                     child: const Text('Change me'),
-                    color: currentColor,
-                    textColor: useWhiteForeground(currentColor)
+                    color: _currentColor,
+                    textColor: useWhiteForeground(_currentColor)
                         ? const Color(0xffffffff)
                         : const Color(0xff000000),
                   ),
@@ -195,38 +242,20 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void changeColor(Color color) {
-    if (color != currentColor) {
+    if (color != _currentColor) {
       setState(() {
-        currentColor = color;
+        _currentColor = color;
+        _colorJson.red = color.red;
+        _colorJson.green = color.green;
+        _colorJson.blue = color.blue;
+        _colorJson.alpha = color.alpha;
       });
     }
   }
 
   _sendColor() {
     if (_characteristic != null) {
-      int red = currentColor.red;
-      int green = currentColor.green;
-      int blue = currentColor.blue;
-      double alpha = currentColor.alpha / 255 * 100;
-
-      if (red != 0) {
-        red = (red * alpha / 100).toInt();
-      }
-      if (green != 0) {
-        green = (green * alpha / 100).toInt();
-      }
-      if (blue != 0) {
-        blue = (blue * alpha / 100).toInt();
-      }
-
-
-      String rrr = (red < 10) ? '00$red' : (red < 100) ? '0$red' : '$red';
-      String ggg = (green < 10) ? '00$green' : (green < 100) ? '0$green' : '$green';
-      String bbb = (blue < 10) ? '00$blue' : (blue < 100) ? '0$blue' : '$blue';
-
-      print("$rrr,$ggg,$bbb");
-
-      _characteristic.write(utf8.encode("$rrr,$ggg,$bbb"));
+      _characteristic.write(utf8.encode(json.encode(_colorJson)));
     }
   }
 
