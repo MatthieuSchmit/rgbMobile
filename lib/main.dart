@@ -67,7 +67,7 @@ class _MyHomePageState extends State<MyHomePage> {
   ColorLed _colorLed;
   bool lightTheme = true;
   
-  BleManager _bleManager;
+  BleManager _bleManager = new BleManager();
   Peripheral _esp;
   StreamSubscription<ScanResult> _scanSubstriction;
   StreamSubscription<Uint8List> _streamNotification;
@@ -82,41 +82,61 @@ class _MyHomePageState extends State<MyHomePage> {
   
   _connectToEsp() {
     _scanSubstriction = _bleManager.startPeripheralScan().listen((ScanResult scanResult) {
+      print('*** START SCAN');
       print(scanResult.peripheral.name);
       if (scanResult.peripheral.name == BLE_NAME) {
-        setState(() {
-          _esp = scanResult.peripheral;
-        });
-        _esp.characteristics(SERVICE_UUID).then((characteristics) {
-          for (Characteristic characteristic in characteristics) {
-            // Char read/write
-            if (characteristic.uuid == CHARACT_UUID) {
-              setState(() {
-                _characteristic = characteristic;
-              });
-              _characteristic.read().then((value) {
-                Map<String,dynamic> response = json.decode(utf8.decode(value));
-                setState(() {
-                  _colorLed = new ColorLed.fromJson(response);
-                });
-              });
-            }
-            // Char notification
-            if (characteristic.uuid == CHARACT_UUID_TX) {
-              setState(() {
-                _characteristicTX = characteristic;
-              });
-              _streamNotification = characteristic.monitor().listen((value) {
-                Map<String,dynamic> response = json.decode(utf8.decode(value));
-                setState(() {
-                  _colorLed = new ColorLed.fromJson(response);
-                });
-              });
-            }
-          }
+        scanResult.peripheral.connect().then((value) async {
+          print("esp connected..");
+          _bleManager.stopPeripheralScan();
+          setState(() {
+            _esp = scanResult.peripheral;
+          });
+          print(_esp.toString());
+          _esp.discoverAllServicesAndCharacteristics().then((value) {
+            _esp.characteristics(SERVICE_UUID).then((characteristics) {
+              print('search char');
+              for (Characteristic characteristic in characteristics) {
+                // Char read/write
+                if (characteristic.uuid == CHARACT_UUID) {
+                  print('char finded');
+                  setState(() {
+                    _characteristic = characteristic;
+                  });
+                  _characteristic.read().then((value) {
+                    Map<String,dynamic> response = json.decode(utf8.decode(value));
+                    setState(() {
+                      _colorLed = new ColorLed.fromJson(response);
+                    });
+                  });
+                }
+                // Char notification
+                if (characteristic.uuid == CHARACT_UUID_TX) {
+                  print('charTX finded');
+                  setState(() {
+                    _characteristicTX = characteristic;
+                  });
+                  _streamNotification = characteristic.monitor().listen((value) {
+                    print(value);
+                    Map<String,dynamic> response = json.decode(utf8.decode(value));
+                    setState(() {
+                      _colorLed = new ColorLed.fromJson(response);
+                    });
+                  });
+                }
+              }
+            }).catchError((e) {
+              print(e);
+            });
+          });
         });
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _esp.disconnectOrCancelConnection();
+    super.dispose();
   }
   
   
@@ -127,11 +147,7 @@ class _MyHomePageState extends State<MyHomePage> {
 
   Widget _bodyUnconnected() {
     return Center(
-      child: Column(
-        children: <Widget>[
-          Text('Connecting..'),
-        ],
-      ),
+      child: CircularProgressIndicator()
     );
   }
 
@@ -157,14 +173,16 @@ class _MyHomePageState extends State<MyHomePage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: <Widget>[
-                  Column(
-                    children: <Widget>[
-                      Text('R : ${_colorLed.red}'), // int
-                      Text('G : ${_colorLed.green}'),
-                      Text('B : ${_colorLed.blue}'),
-                      Text('A : ${_colorLed.alpha / 255 * 100} %'),
-                    ],
+                  Center(
+                    child: Column(
+                      children: <Widget>[
+                        Text(_esp.toString()),
+                        Text(_characteristic.toString()),
+                        Text(_colorLed.toJson().toString()),
+                      ],
+                    ),
                   ),
+
                   Switch(
                     value: _colorLed.isOn,
                     onChanged: (value) {
