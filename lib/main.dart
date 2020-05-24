@@ -1,13 +1,13 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:flutter_blue/flutter_blue.dart';
+import 'package:flutter_ble_lib/flutter_ble_lib.dart';
 
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
-import 'package:led_strip/Bluetooth.dart';
 
 void main() => runApp(MyApp());
-//void main() => runApp(MyBluetooth());
 
 class MyApp extends StatelessWidget {
   @override
@@ -28,7 +28,8 @@ class ColorLed {
   int green;
   int blue;
   int alpha;
-  ColorLed({this.isOn,this.red,this.green,this.blue,this.alpha});
+  Color color;
+  ColorLed({this.isOn,this.red,this.green,this.blue,this.alpha,this.color});
   factory ColorLed.fromJson(Map<String,dynamic> parsedJson) {
     return ColorLed(
       isOn: parsedJson["isOn"],
@@ -36,6 +37,7 @@ class ColorLed {
       green: parsedJson["green"],
       blue: parsedJson["blue"],
       alpha: parsedJson["alpha"],
+      color: new Color.fromARGB(parsedJson["alpha"], parsedJson["red"], parsedJson["green"], parsedJson["blue"])
     );
   }
   Map<String,dynamic> toJson() {
@@ -52,10 +54,6 @@ class ColorLed {
 
 class MyHomePage extends StatefulWidget {
   MyHomePage({Key key}) : super(key: key);
-
-  final FlutterBlue flutterBlue = FlutterBlue.instance;
-  Map<Guid, List<int>> readValues = new Map<Guid, List<int>>();
-
   @override
   _MyHomePageState createState() => _MyHomePageState();
 }
@@ -66,84 +64,65 @@ class _MyHomePageState extends State<MyHomePage> {
   String CHARACT_UUID = "beb5483e-36e1-4688-b7f5-ea07361b26a8";
   String CHARACT_UUID_TX = "beb5483e-36e1-4688-b7f5-c5c9c331914b";
 
-  ColorLed _colorJson = new ColorLed(isOn: true, red: 0, green: 0, blue: 0, alpha: 0);
-  Color _currentColor = Colors.blue;
+  ColorLed _colorLed;
   bool lightTheme = true;
-
-  BluetoothDevice _connectedDevice;
-  BluetoothCharacteristic _characteristic;
-  BluetoothCharacteristic _characteristicTX;
+  
+  BleManager _bleManager;
+  Peripheral _esp;
+  StreamSubscription<ScanResult> _scanSubstriction;
+  StreamSubscription<Uint8List> _streamNotification;
+  Characteristic _characteristic;
+  Characteristic _characteristicTX;
 
   @override
   void initState() {
     super.initState();
-      _connectToEsp();
+    _bleManager.createClient().then((value) => _connectToEsp());
   }
-
+  
   _connectToEsp() {
-    widget.flutterBlue.connectedDevices
-        .asStream()
-        .listen((List<BluetoothDevice> devices) {
-      for (BluetoothDevice device in devices) {
-        _setConnectedDevice(device);
-      }
-    });
-    widget.flutterBlue.scanResults.listen((List<ScanResult> results) {
-      for (ScanResult result in results) {
-        _setConnectedDevice(result.device);
-      }
-    });
-    widget.flutterBlue.startScan();
-  }
-
-  _setConnectedDevice(BluetoothDevice device) {
-    if (device.name == BLE_NAME) {
-      device.connect().then((value) {
-        widget.flutterBlue.stopScan();
+    _scanSubstriction = _bleManager.startPeripheralScan().listen((ScanResult scanResult) {
+      print(scanResult.peripheral.name);
+      if (scanResult.peripheral.name == BLE_NAME) {
         setState(() {
-          _connectedDevice = device;
+          _esp = scanResult.peripheral;
         });
-        device.discoverServices().then((value) async {
-          for (BluetoothService service in value) {
-            if (service.uuid.toString() == SERVICE_UUID) {
-              for (BluetoothCharacteristic characteristic in service.characteristics) {
-                if (characteristic.uuid.toString() == CHARACT_UUID) {
-                  characteristic.read().then((value) {
-
-                    Map<String,dynamic> color = json.decode(utf8.decode(value));
-                    setState(() {
-                      this._colorJson = new ColorLed.fromJson(color);
-                    });
-                  });
-                  setState(() {
-                    _characteristic = characteristic;
-                  });
-                }
-                if (characteristic.uuid.toString() == CHARACT_UUID_TX) {
-                  setState(() {
-                    _characteristicTX = characteristic;
-                  });
-                  _characteristicTX.value.listen((value) {
-                    print("***** $value");
-                  });
-                  // TODO
-                  //await _characteristicTX.setNotifyValue(true);
-                }
-              }
+        _esp.characteristics(SERVICE_UUID).then((characteristics) {
+          for (Characteristic characteristic in characteristics) {
+            // Char read/write
+            if (characteristic.uuid == CHARACT_UUID) {
+              setState(() {
+                _characteristic = characteristic;
+              });
+              _characteristic.read().then((value) {
+                Map<String,dynamic> response = json.decode(utf8.decode(value));
+                setState(() {
+                  _colorLed = new ColorLed.fromJson(response);
+                });
+              });
+            }
+            // Char notification
+            if (characteristic.uuid == CHARACT_UUID_TX) {
+              setState(() {
+                _characteristicTX = characteristic;
+              });
+              _streamNotification = characteristic.monitor().listen((value) {
+                Map<String,dynamic> response = json.decode(utf8.decode(value));
+                setState(() {
+                  _colorLed = new ColorLed.fromJson(response);
+                });
+              });
             }
           }
         });
-      }).catchError((e) {
-        if (e.code != 'already_connected') {
-          throw e;
-        }
-      });
-    }
+      }
+    });
   }
-
+  
+  
   @override
   Widget build(BuildContext context) {
-    return (_connectedDevice == null) ? _bodyUnconnected() : _bodyConnected();
+    return (_colorLed == null) ? _bodyUnconnected() : _bodyConnected();
   }
 
   Widget _bodyUnconnected() {
@@ -180,17 +159,17 @@ class _MyHomePageState extends State<MyHomePage> {
                 children: <Widget>[
                   Column(
                     children: <Widget>[
-                      Text('R : ${_colorJson.red}'), // int
-                      Text('G : ${_colorJson.green}'),
-                      Text('B : ${_colorJson.blue}'),
-                      Text('A : ${_colorJson.alpha / 255 * 100} %'),
+                      Text('R : ${_colorLed.red}'), // int
+                      Text('G : ${_colorLed.green}'),
+                      Text('B : ${_colorLed.blue}'),
+                      Text('A : ${_colorLed.alpha / 255 * 100} %'),
                     ],
                   ),
                   Switch(
-                    value: _colorJson.isOn,
+                    value: _colorLed.isOn,
                     onChanged: (value) {
                       setState(() {
-                        _colorJson.isOn = value;
+                        _colorLed.isOn = value;
                       });
                       _sendColor();
                     }
@@ -206,7 +185,7 @@ class _MyHomePageState extends State<MyHomePage> {
                             contentPadding: const EdgeInsets.all(0.0),
                             content: SingleChildScrollView(
                               child: ColorPicker(
-                                pickerColor: _currentColor,
+                                pickerColor: _colorLed.color,
                                 onColorChanged: changeColor,
                                 colorPickerWidth: 300.0,
                                 pickerAreaHeightPercent: 0.7,
@@ -225,8 +204,8 @@ class _MyHomePageState extends State<MyHomePage> {
                       );
                     },
                     child: const Text('Change me'),
-                    color: _currentColor,
-                    textColor: useWhiteForeground(_currentColor)
+                    color: _colorLed.color,
+                    textColor: useWhiteForeground(_colorLed.color)
                         ? const Color(0xffffffff)
                         : const Color(0xff000000),
                   ),
@@ -242,20 +221,20 @@ class _MyHomePageState extends State<MyHomePage> {
   }
 
   void changeColor(Color color) {
-    if (color != _currentColor) {
+    if (color != _colorLed.color) {
       setState(() {
-        _currentColor = color;
-        _colorJson.red = color.red;
-        _colorJson.green = color.green;
-        _colorJson.blue = color.blue;
-        _colorJson.alpha = color.alpha;
+        _colorLed.color = color;
+        _colorLed.red = color.red;
+        _colorLed.green = color.green;
+        _colorLed.blue = color.blue;
+        _colorLed.alpha = color.alpha;
       });
     }
   }
 
   _sendColor() {
     if (_characteristic != null) {
-      _characteristic.write(utf8.encode(json.encode(_colorJson)));
+      _characteristic.write(utf8.encode(json.encode(_colorLed.toJson())),true);
     }
   }
 
