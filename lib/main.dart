@@ -13,7 +13,7 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Flutter Demo',
+      title: 'ESP led',
       theme: ThemeData(
         primarySwatch: Colors.blue,
       ),
@@ -69,10 +69,7 @@ class _MyHomePageState extends State<MyHomePage> {
   
   BleManager _bleManager = new BleManager();
   Peripheral _esp;
-  StreamSubscription<ScanResult> _scanSubstriction;
-  StreamSubscription<Uint8List> _streamNotification;
   Characteristic _characteristic;
-  Characteristic _characteristicTX;
 
   @override
   void initState() {
@@ -81,53 +78,61 @@ class _MyHomePageState extends State<MyHomePage> {
   }
   
   _connectToEsp() {
-    _scanSubstriction = _bleManager.startPeripheralScan().listen((ScanResult scanResult) {
+    _bleManager.startPeripheralScan().listen((ScanResult scanResult) {
       print('*** START SCAN');
       print(scanResult.peripheral.name);
       if (scanResult.peripheral.name == BLE_NAME) {
-        scanResult.peripheral.connect().then((value) async {
+        scanResult.peripheral.connect().then((value) {
           print("esp connected..");
           _bleManager.stopPeripheralScan();
           setState(() {
             _esp = scanResult.peripheral;
           });
-          print(_esp.toString());
           _esp.discoverAllServicesAndCharacteristics().then((value) {
-            _esp.characteristics(SERVICE_UUID).then((characteristics) {
-              print('search char');
-              for (Characteristic characteristic in characteristics) {
-                // Char read/write
-                if (characteristic.uuid == CHARACT_UUID) {
-                  print('char finded');
-                  setState(() {
-                    _characteristic = characteristic;
-                  });
-                  _characteristic.read().then((value) {
-                    Map<String,dynamic> response = json.decode(utf8.decode(value));
+            _esp.requestMtu(512).then((value) {
+              _esp.characteristics(SERVICE_UUID).then((characteristics) {
+                for (Characteristic characteristic in characteristics) {
+                  // Char read/write
+                  if (characteristic.uuid == CHARACT_UUID) {
                     setState(() {
-                      _colorLed = new ColorLed.fromJson(response);
+                      _characteristic = characteristic;
                     });
-                  });
-                }
-                // Char notification
-                if (characteristic.uuid == CHARACT_UUID_TX) {
-                  print('charTX finded');
-                  setState(() {
-                    _characteristicTX = characteristic;
-                  });
-                  _streamNotification = characteristic.monitor().listen((value) {
-                    print(value);
-                    Map<String,dynamic> response = json.decode(utf8.decode(value));
-                    setState(() {
-                      _colorLed = new ColorLed.fromJson(response);
+                    _characteristic.read().then((value) {
+                      Map<String,dynamic> response = json.decode(utf8.decode(value));
+                      setState(() {
+                        _colorLed = new ColorLed.fromJson(response);
+                      });
+                    }).catchError((e) {
+                      print('*** Error read characteristic $CHARACT_UUID');
+                      print(e);
                     });
-                  });
+                  }
+                  // Char notification
+                  if (characteristic.uuid == CHARACT_UUID_TX) {
+                    characteristic.monitor().listen((value) {
+                      print(value);
+                      Map<String,dynamic> response = json.decode(utf8.decode(value));
+                      setState(() {
+                        _colorLed = new ColorLed.fromJson(response);
+                      });
+                    });
+                  }
                 }
-              }
+              }).catchError((e) {
+                print('*** Error get characteristics of service $SERVICE_UUID');
+                print(e);
+              });
             }).catchError((e) {
+              print('*** Error set MTU');
               print(e);
             });
+          }).catchError((e) {
+            print('*** Error discover services and characteristics');
+          print(e);
           });
+        }).catchError((e) {
+          print('*** Error connect');
+          print(e);
         });
       }
     });
