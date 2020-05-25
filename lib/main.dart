@@ -7,6 +7,8 @@ import 'package:flutter_ble_lib/flutter_ble_lib.dart';
 
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 
+import 'classes/ColorLed.dart';
+
 void main() => runApp(MyApp());
 
 class MyApp extends StatelessWidget {
@@ -21,36 +23,6 @@ class MyApp extends StatelessWidget {
     );
   }
 }
-
-class ColorLed {
-  bool isOn;
-  int red;
-  int green;
-  int blue;
-  int alpha;
-  Color color;
-  ColorLed({this.isOn,this.red,this.green,this.blue,this.alpha,this.color});
-  factory ColorLed.fromJson(Map<String,dynamic> parsedJson) {
-    return ColorLed(
-      isOn: parsedJson["isOn"],
-      red: parsedJson["red"],
-      green: parsedJson["green"],
-      blue: parsedJson["blue"],
-      alpha: parsedJson["alpha"],
-      color: new Color.fromARGB(parsedJson["alpha"], parsedJson["red"], parsedJson["green"], parsedJson["blue"])
-    );
-  }
-  Map<String,dynamic> toJson() {
-    return {
-      "isOn": this.isOn,
-      "red" : this.red,
-      "green" : this.green,
-      "blue" : this.blue,
-      "alpha" : this.alpha
-    };
-  }
-}
-
 
 class MyHomePage extends StatefulWidget {
   MyHomePage({Key key}) : super(key: key);
@@ -141,6 +113,7 @@ class _MyHomePageState extends State<MyHomePage> {
   @override
   void dispose() {
     _esp.disconnectOrCancelConnection();
+    _bleManager.destroyClient();
     super.dispose();
   }
   
@@ -178,25 +151,70 @@ class _MyHomePageState extends State<MyHomePage> {
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: <Widget>[
-                  Center(
-                    child: Column(
-                      children: <Widget>[
-                        Text(_esp.toString()),
-                        Text(_characteristic.toString()),
-                        Text(_colorLed.toJson().toString()),
-                      ],
-                    ),
+                  Text('Connected to ${_esp.name}'),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      FlatButton(
+                        onPressed: () {
+                          setState(() {
+                            _colorLed.isOn = true;
+                          });
+                          _sendColor();
+                        },
+                        child: Text('ON'),
+                        color: (_colorLed.isOn) ? Colors.blue : Colors.white,
+                      ),
+                      FlatButton(
+                        onPressed: () {
+                          setState(() {
+                            _colorLed.isOn = false;
+                          });
+                          _sendColor();
+                        },
+                        child: Text('OFF'),
+                        color: (_colorLed.isOn) ? Colors.white : Colors.blue,
+                      ),
+                    ],
                   ),
 
-                  Switch(
-                    value: _colorLed.isOn,
-                    onChanged: (value) {
-                      setState(() {
-                        _colorLed.isOn = value;
-                      });
-                      _sendColor();
-                    }
+
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: <Widget>[
+                      FlatButton(
+                        onPressed: () {
+                          setState(() {
+                            _colorLed.type = 'STATIC';
+                          });
+                          _sendColor();
+                        },
+                        child: Text('STATIC'),
+                        color: (_colorLed.type == 'STATIC') ? Colors.blue : Colors.white,
+                      ),
+                      FlatButton(
+                        onPressed: () {
+                          setState(() {
+                            _colorLed.type = 'RAINBOW';
+                          });
+                          _sendColor();
+                        },
+                        child: Text('RAINBOW'),
+                        color: (_colorLed.type == 'RAINBOW') ? Colors.blue : Colors.white,
+                      ),
+                      FlatButton(
+                        onPressed: () {
+                          setState(() {
+                            _colorLed.type = 'WAVE';
+                          });
+                          _sendColor();
+                        },
+                        child: Text('WAVE'),
+                        color: (_colorLed.type == 'WAVE') ? Colors.blue : Colors.white,
+                      ),
+                    ],
                   ),
+
                   RaisedButton(
                     elevation: 3.0,
                     onPressed: () {
