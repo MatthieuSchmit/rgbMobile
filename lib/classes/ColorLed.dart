@@ -14,7 +14,7 @@ class ColorLed {
   int blue;
   int alpha;
   Color color;
-  String type; // STATIC, RAINBOW, WAVE
+  String type; // STATIC, RAINBOW, WAVE, COP
 
   ColorLed({this.isOn,this.red,this.green,this.blue,this.alpha,this.color,this.type});
 

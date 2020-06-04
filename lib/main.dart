@@ -43,6 +43,8 @@ class _MyHomePageState extends State<MyHomePage> {
   Peripheral _esp;
   Characteristic _characteristic;
 
+  List<String> _animations = ['STATIC', 'RAINBOW', 'WAVE', 'COP'];
+
   @override
   void initState() {
     super.initState();
@@ -179,85 +181,105 @@ class _MyHomePageState extends State<MyHomePage> {
                   ),
 
 
+                  Card(
+                    child: Column(
+                      children: <Widget>[
+                        ListTile(
+                          leading: Icon(
+                            Icons.brightness_7,
+                            color: Colors.pink,
+                          ),
+                          trailing: Text(
+                            _colorLed.type,
+                            style: TextStyle(
+                                color: Colors.grey
+                            ),
+                          ),
+                          title: Text(
+                            'Animations',
+                            style: TextStyle(
+                              color: (MediaQuery.of(context).platformBrightness == Brightness.dark) ? Colors.white : Colors.black,
+                            ),
+                          ),
+                          onTap: () {
+                            _settingsAnimation(context);
+                          },
+                        ),
+                        ListTile(
+                          title: ColorPicker(
+                            pickerColor: _colorLed.color,
+                            onColorChanged: changeColor,
+                            colorPickerWidth: 300.0,
+                            pickerAreaHeightPercent: 0.1,
+                            enableAlpha: true,
+                            displayThumbColor: true,
+                            showLabel: false,
+                            paletteType: PaletteType.rgb,
+                            pickerAreaBorderRadius: const BorderRadius.only(
+                              topLeft: const Radius.circular(2.0),
+                              topRight: const Radius.circular(2.0),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   Row(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: <Widget>[
-                      FlatButton(
+                      RaisedButton(
                         onPressed: () {
-                          setState(() {
-                            _colorLed.type = 'STATIC';
+                          _characteristic.read().then((value) {
+                            Map<String,dynamic> response = json.decode(utf8.decode(value));
+                            setState(() {
+                              _colorLed = new ColorLed.fromJson(response);
+                            });
+                          }).catchError((e) {
+                            print('*** Error read characteristic $CHARACT_UUID');
+                            print(e);
                           });
-                          _sendColor();
                         },
-                        child: Text('STATIC'),
-                        color: (_colorLed.type == 'STATIC') ? Colors.blue : Colors.white,
+                        child: Text('Reset'),
                       ),
-                      FlatButton(
-                        onPressed: () {
-                          setState(() {
-                            _colorLed.type = 'RAINBOW';
-                          });
-                          _sendColor();
-                        },
-                        child: Text('RAINBOW'),
-                        color: (_colorLed.type == 'RAINBOW') ? Colors.blue : Colors.white,
-                      ),
-                      FlatButton(
-                        onPressed: () {
-                          setState(() {
-                            _colorLed.type = 'WAVE';
-                          });
-                          _sendColor();
-                        },
-                        child: Text('WAVE'),
-                        color: (_colorLed.type == 'WAVE') ? Colors.blue : Colors.white,
+                      RaisedButton(
+                        onPressed: () => _sendColor(),
+                        child: Text('Apply'),
                       ),
                     ],
                   ),
-
-                  RaisedButton(
-                    elevation: 3.0,
-                    onPressed: () {
-                      showDialog(
-                        context: context,
-                        builder: (BuildContext context) {
-                          return AlertDialog(
-                            titlePadding: const EdgeInsets.all(0.0),
-                            contentPadding: const EdgeInsets.all(0.0),
-                            content: SingleChildScrollView(
-                              child: ColorPicker(
-                                pickerColor: _colorLed.color,
-                                onColorChanged: changeColor,
-                                colorPickerWidth: 300.0,
-                                pickerAreaHeightPercent: 0.7,
-                                enableAlpha: true,
-                                displayThumbColor: true,
-                                showLabel: true,
-                                paletteType: PaletteType.hsv,
-                                pickerAreaBorderRadius: const BorderRadius.only(
-                                  topLeft: const Radius.circular(2.0),
-                                  topRight: const Radius.circular(2.0),
-                                ),
-                              ),
-                            ),
-                          );
-                        },
-                      );
-                    },
-                    child: const Text('Change me'),
-                    color: _colorLed.color,
-                    textColor: useWhiteForeground(_colorLed.color)
-                        ? const Color(0xffffffff)
-                        : const Color(0xff000000),
-                  ),
-                  RaisedButton(
-                    child: Text("Send"),
-                    onPressed: () => _sendColor(),
-                  )
                 ],
               ),
             )
         )
+    );
+  }
+
+  _settingsAnimation(context) {
+    List<Widget> listTiles = [];
+    _animations.forEach((animation) {
+      listTiles.add(ListTile(
+        leading: (_colorLed.type == animation) ? Icon(Icons.check) : Text(''),
+        title: Text(animation),
+        onTap: () {
+          setState(() {
+            _colorLed.type = animation;
+          });
+          //_sendColor();
+          Navigator.pop(context);
+        },
+      ));
+    });
+
+    showModalBottomSheet(
+        backgroundColor: (MediaQuery.of(context).platformBrightness == Brightness.dark) ? Colors.grey : Colors.white,
+        context: context,
+        builder: (BuildContext builder) {
+          return Container(
+            child: Wrap(
+              children: listTiles,
+            ),
+          );
+        }
     );
   }
 
@@ -278,5 +300,7 @@ class _MyHomePageState extends State<MyHomePage> {
       _characteristic.write(utf8.encode(json.encode(_colorLed.toJson())),true);
     }
   }
+
+
 
 }
