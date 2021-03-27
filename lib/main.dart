@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_ble_lib/flutter_ble_lib.dart';
 
 import 'package:flutter_colorpicker/flutter_colorpicker.dart';
+import 'package:notifications/notifications.dart';
 
 import 'classes/ColorLed.dart';
 
@@ -45,10 +46,18 @@ class _MyHomePageState extends State<MyHomePage> {
 
   List<String> _animations = ['STATIC', 'RAINBOW', 'WAVE', 'COP'];
 
+  Notifications _notifications;
+  StreamSubscription _subscription;
+
   @override
   void initState() {
     super.initState();
-    _bleManager.createClient().then((value) => _connectToEsp());
+    _bleManager.createClient()
+      .then((value) => _connectToEsp())
+      .catchError((e) {
+      print('*** Error connect, $e');
+      print(e);
+    });
   }
   
   _connectToEsp() {
@@ -92,6 +101,16 @@ class _MyHomePageState extends State<MyHomePage> {
                     });
                   }
                 }
+
+                /*
+                _notifications = new Notifications();
+                try {
+                  _subscription = _notifications.notificationStream.listen(onData);
+                } on NotificationException catch (exception) {
+                  print("*** Error notifications $exception");
+                }
+                 */
+
               }).catchError((e) {
                 print('*** Error get characteristics of service $SERVICE_UUID');
                 print(e);
@@ -109,6 +128,9 @@ class _MyHomePageState extends State<MyHomePage> {
           print(e);
         });
       }
+    }).onError((e){
+      print('*** Error listen');
+      print(e);
     });
   }
 
@@ -116,9 +138,13 @@ class _MyHomePageState extends State<MyHomePage> {
   void dispose() {
     _esp.disconnectOrCancelConnection();
     _bleManager.destroyClient();
+    _subscription.cancel();
     super.dispose();
   }
-  
+
+  void onData(NotificationEvent event) {
+    print(event.toString());
+  }
   
   @override
   Widget build(BuildContext context) {
@@ -221,6 +247,11 @@ class _MyHomePageState extends State<MyHomePage> {
                             ),
                           ),
                         ),
+                        ListTile(
+                          title: Text(
+                            "RGBA : ${_colorLed.color.red}, ${_colorLed.color.green}, ${_colorLed.color.blue}, ${_colorLed.color.alpha}"
+                          ),
+                        ),
                       ],
                     ),
                   ),
@@ -282,6 +313,7 @@ class _MyHomePageState extends State<MyHomePage> {
         }
     );
   }
+
 
   void changeColor(Color color) {
     if (color != _colorLed.color) {
